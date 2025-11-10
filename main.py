@@ -68,25 +68,32 @@ class MainApp(tk.Tk):
         kp_frame.pack(fill=tk.X, pady=5)
         
         ttk.Label(kp_frame, text="Known Plaintext Attack (Most Effective):").pack(anchor=tk.W)
-        kp_input_frame = ttk.Frame(kp_frame)
-        kp_input_frame.pack(fill=tk.X, pady=2)
         
-        ttk.Label(kp_input_frame, text="Known plaintext:").pack(side=tk.LEFT)
-        self.known_plain_entry = ttk.Entry(kp_input_frame, width=40)
+        # Known plaintext input
+        kp_plain_frame = ttk.Frame(kp_frame)
+        kp_plain_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(kp_plain_frame, text="Known plaintext:").pack(side=tk.LEFT)
+        self.known_plain_entry = ttk.Entry(kp_plain_frame, width=30)
         self.known_plain_entry.pack(side=tk.LEFT, padx=5)
-        ttk.Button(kp_input_frame, text="Run Known-Plaintext Attack", 
-                  command=self.run_known_plain).pack(side=tk.LEFT, padx=5)
-
-        # Other attacks
-        other_attacks_frame = ttk.Frame(methods_frame)
-        other_attacks_frame.pack(fill=tk.X, pady=5)
         
-        ttk.Button(other_attacks_frame, text="Frequency Analysis", 
+        # Known ciphertext input  
+        kp_cipher_frame = ttk.Frame(kp_frame)
+        kp_cipher_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(kp_cipher_frame, text="Its ciphertext:").pack(side=tk.LEFT)
+        self.known_cipher_entry = ttk.Entry(kp_cipher_frame, width=30)
+        self.known_cipher_entry.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(kp_frame, text="Run Known-Plaintext Attack", 
+                  command=self.run_known_plain).pack(pady=5)
+
+        # Frequency analysis
+        freq_frame = ttk.Frame(methods_frame)
+        freq_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Button(freq_frame, text="Frequency Analysis", 
                   command=self.run_freq_analysis).pack(side=tk.LEFT, padx=2)
-        ttk.Button(other_attacks_frame, text="Brute Force Affine Only", 
-                  command=self.run_brute_force_affine).pack(side=tk.LEFT, padx=2)
-        ttk.Button(other_attacks_frame, text="Advanced Frequency Attack", 
-                  command=self.run_break_combined).pack(side=tk.LEFT, padx=2)
+        ttk.Button(freq_frame, text="Frequency-Based Attack", 
+                  command=self.run_frequency_attack).pack(side=tk.LEFT, padx=2)
 
         # Output
         ttk.Label(atk_frame, text="Attack Output:").pack(anchor=tk.W, pady=(10,0))
@@ -211,31 +218,32 @@ class MainApp(tk.Tk):
         self.atk_output.delete(1.0, tk.END)
         self.atk_output.insert(tk.END, res)
 
-    def run_known_plain(self):
-        cipher = self.atk_cipher_text.get(1.0, tk.END).strip()
-        known = self.known_plain_entry.get().strip()
-        if not cipher:
-            messagebox.showinfo("Input required", "Please provide ciphertext.")
-            return
-        if len(known) < 4:
-            messagebox.showinfo("Input required", "Known plaintext should be at least 4 characters.")
-            return
-        
-        self.run_attack_in_thread(attack_tools.known_plaintext_attack, cipher, known)
-
-    def run_brute_force_affine(self):
-        cipher = self.atk_cipher_text.get(1.0, tk.END).strip()
-        if not cipher:
-            messagebox.showinfo("Input required", "Please paste ciphertext into the field above.")
-            return
-        self.run_attack_in_thread(attack_tools.brute_force_affine_only, cipher)
-
-    def run_break_combined(self):
+    def run_frequency_attack(self):
         cipher = self.atk_cipher_text.get(1.0, tk.END).strip()
         if not cipher:
             messagebox.showinfo("Input required", "Please paste ciphertext into the field above.")
             return
         self.run_attack_in_thread(attack_tools.break_combined_frequency, cipher)
+
+    def run_known_plain(self):
+        cipher = self.atk_cipher_text.get(1.0, tk.END).strip()
+        known_plain = self.known_plain_entry.get().strip()
+        known_cipher = self.known_cipher_entry.get().strip()
+        
+        if not cipher:
+            messagebox.showinfo("Input required", "Please provide full ciphertext.")
+            return
+        if not known_plain or not known_cipher:
+            messagebox.showinfo("Input required", "Please provide both known plaintext and its ciphertext.")
+            return
+        if len(known_plain) < 4:
+            messagebox.showinfo("Input required", "Known plaintext should be at least 4 characters.")
+            return
+        if len(known_plain) != len(known_cipher):
+            messagebox.showinfo("Input required", "Known plaintext and its ciphertext must be same length.")
+            return
+        
+        self.run_attack_in_thread(attack_tools.known_plaintext_attack, cipher, known_plain, known_cipher)
 
     # ---- Tab 3 handlers ----
     def run_eff_tests(self):

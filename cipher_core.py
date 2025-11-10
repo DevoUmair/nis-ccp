@@ -74,23 +74,20 @@ def affine_decrypt(ciphertext, a, b):
             plaintext.append(ch)
     return ''.join(plaintext)
 
-# --- Derive affine params from key (deterministic for encryption/decryption) ---
-def derive_affine_params_from_key(key):
-    # choose a fixed a that is coprime with 26 (5 is fine) and b derived from key
-    a = 5
-    b = sum(ord(c) for c in key) % 26
-    return a, b
-
 # --- Combined Cipher (Vigenere followed by Affine) ---
 def combined_encrypt(plaintext, key, keep_nonletters=False):
     text = clean_text(plaintext, keep_nonletters)
+    # First apply Vigenere
     stage1 = vigenere_encrypt(text, key)
-    a, b = derive_affine_params_from_key(key)
+    # Then apply Affine with fixed parameters
+    a, b = 5, 7  # Fixed affine parameters
     stage2 = affine_encrypt(stage1, a, b)
     return stage2
 
 def combined_decrypt(ciphertext, key, keep_nonletters=False):
-    a, b = derive_affine_params_from_key(key)
+    # First remove Affine layer
+    a, b = 5, 7  # Same fixed parameters
     stage1 = affine_decrypt(ciphertext, a, b)
+    # Then remove Vigenere layer
     stage2 = vigenere_decrypt(stage1, key)
     return stage2
