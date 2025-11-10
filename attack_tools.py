@@ -85,55 +85,71 @@ def known_plaintext_attack(ciphertext, known_plaintext, known_ciphertext):
     # Fixed affine parameters (as used in encryption)
     AFFINE_A = 5
     AFFINE_B = 7
-    
+
     print("Starting efficient known-plaintext attack...")
     print(f"Using fixed affine parameters: a={AFFINE_A}, b={AFFINE_B}")
-    
+
+    # Locate known ciphertext inside full ciphertext so we know alignment
+    pos = full_cipher_clean.find(known_cipher_clean)
+    if pos == -1:
+        return "Known ciphertext fragment not found inside full ciphertext. Please provide the ciphertext substring that matches the known plaintext."
+
     try:
-        # Remove affine layer from known ciphertext
+        # Remove affine layer from known ciphertext fragment
         after_affine_known = affine_decrypt(known_cipher_clean, AFFINE_A, AFFINE_B)
-        
-        # Derive Vigenere key from the relationship
-        derived_key_chars = []
-        
+
+        # Derive Vigenere key fragment from known plaintext <-> stage1 relationship
+        derived_fragment = []
         for i in range(len(known_plain_clean)):
             vig_char = after_affine_known[i]
             plain_char = known_plain_clean[i]
-            
             vig_idx = ALPHABET.index(vig_char)
             plain_idx = ALPHABET.index(plain_char)
-            
-            # Derive key character: key = (cipher - plain) mod 26
             key_idx = (vig_idx - plain_idx) % 26
-            derived_key_chars.append(ALPHABET[key_idx])
-        
-        derived_key = ''.join(derived_key_chars)
-        
-        # Remove affine layer from full ciphertext
+            derived_fragment.append(ALPHABET[key_idx])
+        derived_fragment = ''.join(derived_fragment)
+
+        # Remove affine layer from full ciphertext once
         after_affine_full = affine_decrypt(full_cipher_clean, AFFINE_A, AFFINE_B)
-        
-        # Decrypt with derived key
-        final_plaintext = vigenere_decrypt(after_affine_full, derived_key)
-        
-        # Calculate English score
+
+        # Build a keystream by repeating the derived fragment, aligned at the found position
+        m = len(derived_fragment)
+        keystream = []
+        for j in range(len(after_affine_full)):
+            # keystream at position j is derived_fragment[(j - pos) % m]
+            # This assumes the derived fragment is a repeating segment of the Vigenere keystream
+            idx = (j - pos) % m
+            keystream.append(derived_fragment[idx])
+
+        # Decrypt using keystream (apply keystream char-by-char)
+        plaintext_chars = []
+        for j, ch in enumerate(after_affine_full):
+            if ch.isalpha():
+                c_idx = ALPHABET.index(ch)
+                k_idx = ALPHABET.index(keystream[j])
+                p_idx = (c_idx - k_idx) % 26
+                plaintext_chars.append(ALPHABET[p_idx])
+            else:
+                plaintext_chars.append(ch)
+        final_plaintext = ''.join(plaintext_chars)
+
         english_score = calculate_english_score(final_plaintext)
-        
-        # Format successful result
+
         output = [
-            "KNOWN-PLAINTEXT ATTACK - SUCCESS!",
-            "=" * 60,
-            f"Attack completed in 1 attempt (knew affine parameters)",
+            "KNOWN-PLAINTEXT ATTACK - SUCCESS (aligned keystream)",
             "=" * 60,
             f"Affine parameters: a={AFFINE_A}, b={AFFINE_B}",
-            f"Vigenere key: '{derived_key}'",
+            f"Position of known fragment in ciphertext: {pos}",
+            f"Derived fragment (from known sample): '{derived_fragment}'",
+            f"Keystream length (derived fragment): {m}",
             f"English similarity score: {english_score:.2f}",
-            f"Full decrypted text:",
-            f"{final_plaintext}",
+            "Full decrypted text:",
+            final_plaintext,
             "=" * 60
         ]
-        
+
         return "\n".join(output)
-        
+
     except Exception as e:
         return f"Attack failed with error: {str(e)}"
 
