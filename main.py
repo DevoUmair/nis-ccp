@@ -3,7 +3,7 @@ from tkinter import ttk, filedialog, messagebox
 from cipher_core import combined_encrypt, combined_decrypt
 import attack_tools
 import efficiency_analysis
-import os
+import threading
 
 class MainApp(tk.Tk):
     def __init__(self):
@@ -54,26 +54,48 @@ class MainApp(tk.Tk):
         atk_frame = ttk.Frame(tab2, padding=6)
         atk_frame.pack(fill=tk.BOTH, expand=True)
 
+        # Ciphertext input
         ttk.Label(atk_frame, text="Ciphertext for analysis:").pack(anchor=tk.W)
-        self.atk_cipher_text = tk.Text(atk_frame, height=8, wrap=tk.WORD)
-        self.atk_cipher_text.pack(fill=tk.X)
+        self.atk_cipher_text = tk.Text(atk_frame, height=6, wrap=tk.WORD)
+        self.atk_cipher_text.pack(fill=tk.X, pady=(0, 10))
 
-        atk_opts = ttk.Frame(atk_frame)
-        atk_opts.pack(fill=tk.X, pady=6)
-        ttk.Button(atk_opts, text="Frequency Analysis", command=self.run_freq_analysis).pack(side=tk.LEFT, padx=6)
-        ttk.Button(atk_opts, text="Known-Plaintext Attack", command=self.run_known_plain).pack(side=tk.LEFT, padx=6)
-        ttk.Button(atk_opts, text="Break by Frequency (affine+vig)", command=self.run_break_combined).pack(side=tk.LEFT, padx=6)
+        # Attack methods frame
+        methods_frame = ttk.LabelFrame(atk_frame, text="Attack Methods", padding=10)
+        methods_frame.pack(fill=tk.X, pady=5)
 
-        # Known plaintext inputs
-        kp_frame = ttk.Frame(atk_frame)
-        kp_frame.pack(fill=tk.X, pady=(8,0))
-        ttk.Label(kp_frame, text="Known plaintext fragment (optional):").pack(anchor=tk.W)
-        self.known_plain_entry = ttk.Entry(kp_frame, width=60)
-        self.known_plain_entry.pack(anchor=tk.W, pady=(2,0))
+        # Known plaintext attack
+        kp_frame = ttk.Frame(methods_frame)
+        kp_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(kp_frame, text="Known Plaintext Attack (Most Effective):").pack(anchor=tk.W)
+        kp_input_frame = ttk.Frame(kp_frame)
+        kp_input_frame.pack(fill=tk.X, pady=2)
+        
+        ttk.Label(kp_input_frame, text="Known plaintext:").pack(side=tk.LEFT)
+        self.known_plain_entry = ttk.Entry(kp_input_frame, width=40)
+        self.known_plain_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Button(kp_input_frame, text="Run Known-Plaintext Attack", 
+                  command=self.run_known_plain).pack(side=tk.LEFT, padx=5)
 
-        ttk.Label(atk_frame, text="Attack Output:").pack(anchor=tk.W, pady=(8,0))
-        self.atk_output = tk.Text(atk_frame, height=12, wrap=tk.WORD)
+        # Other attacks
+        other_attacks_frame = ttk.Frame(methods_frame)
+        other_attacks_frame.pack(fill=tk.X, pady=5)
+        
+        ttk.Button(other_attacks_frame, text="Frequency Analysis", 
+                  command=self.run_freq_analysis).pack(side=tk.LEFT, padx=2)
+        ttk.Button(other_attacks_frame, text="Brute Force Affine Only", 
+                  command=self.run_brute_force_affine).pack(side=tk.LEFT, padx=2)
+        ttk.Button(other_attacks_frame, text="Advanced Frequency Attack", 
+                  command=self.run_break_combined).pack(side=tk.LEFT, padx=2)
+
+        # Output
+        ttk.Label(atk_frame, text="Attack Output:").pack(anchor=tk.W, pady=(10,0))
+        self.atk_output = tk.Text(atk_frame, height=15, wrap=tk.WORD)
         self.atk_output.pack(fill=tk.BOTH, expand=True)
+
+        # Progress bar
+        self.progress = ttk.Progressbar(atk_frame, mode='indeterminate')
+        self.progress.pack(fill=tk.X, pady=5)
 
         # --- Tab 3: Efficiency tests ---
         tab3 = ttk.Frame(nb)
@@ -153,6 +175,33 @@ class MainApp(tk.Tk):
         self.result_text.delete(1.0, tk.END)
 
     # ---- Tab 2 handlers ----
+    def run_attack_in_thread(self, attack_function, *args):
+        """Run attack in separate thread to avoid GUI freezing"""
+        self.progress.start()
+        self.atk_output.delete(1.0, tk.END)
+        self.atk_output.insert(tk.END, "Running attack... Please wait...")
+        
+        def attack_wrapper():
+            try:
+                result = attack_function(*args)
+                self.after(0, self.attack_complete, result)
+            except Exception as e:
+                self.after(0, self.attack_error, str(e))
+        
+        thread = threading.Thread(target=attack_wrapper)
+        thread.daemon = True
+        thread.start()
+
+    def attack_complete(self, result):
+        self.progress.stop()
+        self.atk_output.delete(1.0, tk.END)
+        self.atk_output.insert(tk.END, result)
+
+    def attack_error(self, error_msg):
+        self.progress.stop()
+        self.atk_output.delete(1.0, tk.END)
+        self.atk_output.insert(tk.END, f"Error during attack: {error_msg}")
+
     def run_freq_analysis(self):
         cipher = self.atk_cipher_text.get(1.0, tk.END).strip()
         if not cipher:
@@ -165,27 +214,39 @@ class MainApp(tk.Tk):
     def run_known_plain(self):
         cipher = self.atk_cipher_text.get(1.0, tk.END).strip()
         known = self.known_plain_entry.get().strip()
-        if not cipher or not known:
-            messagebox.showinfo("Input required", "Provide both ciphertext and known plaintext fragment.")
+        if not cipher:
+            messagebox.showinfo("Input required", "Please provide ciphertext.")
             return
-        res = attack_tools.known_plaintext_attack(cipher, known)
-        self.atk_output.delete(1.0, tk.END)
-        self.atk_output.insert(tk.END, res)
+        if len(known) < 4:
+            messagebox.showinfo("Input required", "Known plaintext should be at least 4 characters.")
+            return
+        
+        self.run_attack_in_thread(attack_tools.known_plaintext_attack, cipher, known)
+
+    def run_brute_force_affine(self):
+        cipher = self.atk_cipher_text.get(1.0, tk.END).strip()
+        if not cipher:
+            messagebox.showinfo("Input required", "Please paste ciphertext into the field above.")
+            return
+        self.run_attack_in_thread(attack_tools.brute_force_affine_only, cipher)
 
     def run_break_combined(self):
         cipher = self.atk_cipher_text.get(1.0, tk.END).strip()
         if not cipher:
             messagebox.showinfo("Input required", "Please paste ciphertext into the field above.")
             return
-        res = attack_tools.break_combined_frequency(cipher, max_vig_keylen=10, top_candidates=5)
-        self.atk_output.delete(1.0, tk.END)
-        self.atk_output.insert(tk.END, res)
+        self.run_attack_in_thread(attack_tools.break_combined_frequency, cipher)
 
     # ---- Tab 3 handlers ----
     def run_eff_tests(self):
         key = self.eff_key_var.get()
         if not self.validate_key(key):
             return
+        
+        self.eff_output.delete(1.0, tk.END)
+        self.eff_output.insert(tk.END, "Running efficiency tests...")
+        self.update_idletasks()
+        
         res = efficiency_analysis.run_efficiency_tests(key, sizes=(500, 2000, 5000))
         self.eff_output.delete(1.0, tk.END)
         self.eff_output.insert(tk.END, res)
